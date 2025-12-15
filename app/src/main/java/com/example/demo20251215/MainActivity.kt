@@ -41,6 +41,8 @@ import kotlinx.coroutines.delay
 import java.util.concurrent.Executors
 import kotlin.math.pow
 import kotlin.math.sqrt
+import android.os.Handler
+import android.os.Looper
 
 // --- 数据模型 ---
 
@@ -322,107 +324,114 @@ fun processLandmarks(result: HandLandmarkerResult, state: AppState) {
     val indexTip = toScreen(landmarks[8])
     val thumbTip = toScreen(landmarks[4])
 
-    // 1. 双手缩放逻辑
-    if (result.landmarks().size == 2) {
-        val h2 = result.landmarks()[1]
-        val p1 = indexTip
-        val p2 = toScreen(h2[8])
-        val dist = sqrt((p1.x - p2.x).pow(2) + (p1.y - p2.y).pow(2))
+    val post = Handler(Looper.getMainLooper()).post {
+        // 1. 双手缩放逻辑
+        if (result.landmarks().size == 2) {
+            val h2 = result.landmarks()[1]
+            val p1 = indexTip
+            val p2 = toScreen(h2[8])
+            val dist = sqrt((p1.x - p2.x).pow(2) + (p1.y - p2.y).pow(2))
 
-        if (!state.isScaling) {
-            state.isScaling = true
-            state.baseScaleDist = dist
-        } else {
-            val factor = 1f + (dist - state.baseScaleDist) * 0.002f
-            // 应用缩放
-            val cx = (p1.x + p2.x) / 2
-            val cy = (p1.y + p2.y) / 2
-
-            state.strokes.forEach { s ->
-                s.size = (s.size * factor).coerceIn(1f, 100f)
-                s.points.forEach { pt ->
-                    pt.x = cx + (pt.x - cx) * factor
-                    pt.y = cy + (pt.y - cy) * factor
-                }
-            }
-            state.baseScaleDist = dist
-        }
-        return // 双手操作时不进行单手逻辑
-    } else {
-        state.isScaling = false
-    }
-
-    // 2. 单手逻辑
-
-    // 辅助函数
-    fun dist(i: Int, j: Int): Float {
-        val p1 = landmarks[i]
-        val p2 = landmarks[j]
-        return sqrt((p1.x()-p2.x()).pow(2) + (p1.y()-p2.y()).pow(2))
-    }
-
-    val isPalmOpen = (dist(8, 5) > 0.1 && dist(12, 9) > 0.1 && dist(16, 13) > 0.1 && dist(20, 17) > 0.1)
-    val isPinch = dist(8, 4) < 0.05
-    val isVictory = (landmarks[8].y() < landmarks[6].y() && landmarks[12].y() < landmarks[10].y() && landmarks[16].y() > landmarks[14].y())
-
-    // A. 菜单开关
-    if (isPalmOpen && state.menuCooldown == 0) {
-        state.isMenuOpen = !state.isMenuOpen
-        state.menuCooldown = 30
-        state.isDrawing = false
-    }
-
-    // B. 菜单交互
-    if (state.isMenuOpen) {
-        // 检测食指是否触碰按钮 (简单距离检测)
-        val buttons = getUiButtons(screenW, screenH)
-        buttons.forEach { btn ->
-            val d = sqrt((indexTip.x - btn.x).pow(2) + (indexTip.y - btn.y).pow(2))
-            if (d < btn.r + 20) { // 稍微大一点的判定区
-                if (btn.type == "color") {
-                    state.brushColor = btn.value as Color
-                    state.mode = "drawing"
-                } else if (btn.type == "tool") {
-                    state.mode = btn.value as String
-                } else if (btn.type == "size") {
-                    state.brushSize = btn.value as Float
-                }
-            }
-        }
-    }
-    // C. 绘图/擦除/消散
-    else {
-        if (isVictory) {
-            triggerDissolve(state)
-        } else if (isPinch) {
-            val midX = (indexTip.x + thumbTip.x) / 2
-            val midY = (indexTip.y + thumbTip.y) / 2
-
-            if (!state.isDrawing) {
-                state.isDrawing = true
-                state.strokes.add(StrokeLine(
-                    points = mutableListOf(DrawPoint(midX, midY)),
-                    color = if(state.mode=="eraser") Color.Transparent else state.brushColor,
-                    size = if(state.mode=="eraser") state.eraserSize else state.brushSize,
-                    isEraser = state.mode == "eraser"
-                ))
+            if (!state.isScaling) {
+                state.isScaling = true
+                state.baseScaleDist = dist
             } else {
-                if (state.strokes.isNotEmpty()) {
-                    val lastStroke = state.strokes.last()
-                    lastStroke.points.add(DrawPoint(midX, midY))
+                val factor = 1f + (dist - state.baseScaleDist) * 0.002f
+                // 应用缩放
+                val cx = (p1.x + p2.x) / 2
+                val cy = (p1.y + p2.y) / 2
 
-                    if (state.mode == "eraser") {
-                        eraseAt(midX, midY, state.eraserSize, state)
+                state.strokes.forEach { s ->
+                    s.size = (s.size * factor).coerceIn(1f, 100f)
+                    s.points.forEach { pt ->
+                        pt.x = cx + (pt.x - cx) * factor
+                        pt.y = cy + (pt.y - cy) * factor
+                    }
+                }
+                state.baseScaleDist = dist
+            }
+            return // 双手操作时不进行单手逻辑
+        } else {
+            state.isScaling = false
+        }
+
+        // 2. 单手逻辑
+
+        // 辅助函数
+        fun dist(i: Int, j: Int): Float {
+            val p1 = landmarks[i]
+            val p2 = landmarks[j]
+            return sqrt((p1.x() - p2.x()).pow(2) + (p1.y() - p2.y()).pow(2))
+        }
+
+        val isPalmOpen =
+            (dist(8, 5) > 0.1 && dist(12, 9) > 0.1 && dist(16, 13) > 0.1 && dist(20, 17) > 0.1)
+        val isPinch = dist(8, 4) < 0.05
+        val isVictory =
+            (landmarks[8].y() < landmarks[6].y() && landmarks[12].y() < landmarks[10].y() && landmarks[16].y() > landmarks[14].y())
+
+        // A. 菜单开关
+        if (isPalmOpen && state.menuCooldown == 0) {
+            state.isMenuOpen = !state.isMenuOpen
+            state.menuCooldown = 30
+            state.isDrawing = false
+        }
+
+        // B. 菜单交互
+        if (state.isMenuOpen) {
+            // 检测食指是否触碰按钮 (简单距离检测)
+            val buttons = getUiButtons(screenW, screenH)
+            buttons.forEach { btn ->
+                val d = sqrt((indexTip.x - btn.x).pow(2) + (indexTip.y - btn.y).pow(2))
+                if (d < btn.r + 20) { // 稍微大一点的判定区
+                    if (btn.type == "color") {
+                        state.brushColor = btn.value as Color
+                        state.mode = "drawing"
+                    } else if (btn.type == "tool") {
+                        state.mode = btn.value as String
+                    } else if (btn.type == "size") {
+                        state.brushSize = btn.value as Float
                     }
                 }
             }
-        } else {
-            state.isDrawing = false
+        }
+        // C. 绘图/擦除/消散
+        else {
+            if (isVictory) {
+                triggerDissolve(state)
+            } else if (isPinch) {
+                val midX = (indexTip.x + thumbTip.x) / 2
+                val midY = (indexTip.y + thumbTip.y) / 2
+
+                if (!state.isDrawing) {
+                    state.isDrawing = true
+                    state.strokes.add(
+                        StrokeLine(
+                            points = mutableListOf(DrawPoint(midX, midY)),
+                            color = if (state.mode == "eraser") Color.Transparent else state.brushColor,
+                            size = if (state.mode == "eraser") state.eraserSize else state.brushSize,
+                            isEraser = state.mode == "eraser"
+                        )
+                    )
+                } else {
+                    if (state.strokes.isNotEmpty()) {
+                        val lastStroke = state.strokes.last()
+                        lastStroke.points.add(DrawPoint(midX, midY))
+
+                        if (state.mode == "eraser") {
+                            eraseAt(midX, midY, state.eraserSize, state)
+                        }
+                    }
+                }
+            } else {
+                state.isDrawing = false
+            }
         }
     }
+
 }
 
-fun triggerDissolve(state: AppState) {
+    fun triggerDissolve(state: AppState) {
     state.strokes.forEach { stroke ->
         for (i in stroke.points.indices step 5) { // 采样
             val p = stroke.points[i]

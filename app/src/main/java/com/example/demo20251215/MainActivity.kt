@@ -59,6 +59,17 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sqrt
 
+import androidx.compose.ui.graphics.AndroidCanvas
+(drawContext.canvas as AndroidCanvas).nativeCanvas.drawText(
+btn.label,
+btn.x - 10f,
+btn.y + 5f,
+android.graphics.Paint().apply {
+    // Paint配置
+}
+)
+
+
 // ====================== 常量定义（提取所有魔法值） ======================
 private const val TAG = "HandTest"
 private const val CAMERA_PREVIEW_WIDTH = 640
@@ -284,6 +295,33 @@ fun HandDrawingApp() {
     }
 }
 
+private fun bindCameraUseCases(
+    cameraProvider: ProcessCameraProvider,
+    previewView: PreviewView,
+    viewModel: HandDrawingViewModel,
+    executor: Executor
+) {
+    val preview = Preview.Builder().build()
+    val imageAnalysis = ImageAnalysis.Builder()
+        .setTargetResolution(android.util.Size(CAMERA_PREVIEW_WIDTH, CAMERA_PREVIEW_HEIGHT))
+        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+        .build()
+
+    imageAnalysis.setAnalyzer(executor) { imageProxy ->
+        // 你的图像分析逻辑（从AndroidView的update块中迁移）
+    }
+
+    preview.setSurfaceProvider(previewView.surfaceProvider)
+    val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+
+    cameraProvider.unbindAll()
+    cameraProvider.bindToLifecycle(
+        LocalLifecycleOwner.current,
+        cameraSelector,
+        preview,
+        imageAnalysis
+    )
+}
 // ====================== 相机与绘制叠加层 ======================
 @Composable
 fun CameraWithOverlay(viewModel: HandDrawingViewModel) {
@@ -293,6 +331,20 @@ fun CameraWithOverlay(viewModel: HandDrawingViewModel) {
     var frameTrigger by remember { mutableStateOf(0L) }
     var lastFrameTime by remember { mutableStateOf(0L) }
     var mediaPipeInitError by remember { mutableStateOf(false) }
+    val previewView = remember { PreviewView(context) }
+    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+
+
+
+    LaunchedEffect(cameraProviderFuture) {
+        val cameraProvider = cameraProviderFuture.get()
+        bindCameraUseCases(cameraProvider, previewView, viewModel, executor)
+    }
+
+    AndroidView(
+        factory = { previewView },
+        modifier = Modifier.fillMaxSize()
+    )
 
     // MediaPipe 异步初始化（后台线程）
     val handLandmarker by remember {
@@ -333,6 +385,16 @@ fun CameraWithOverlay(viewModel: HandDrawingViewModel) {
                 }
             }
         }
+    }
+    // MediaPipe 初始化时添加错误处理
+    try {
+        val baseOptions = BaseOptions.builder()
+            .setModelAssetPath("hand_landmarker.task")
+            .build()
+        val handLandmarker = HandLandmarker.createFromOptions(context, baseOptions)
+    } catch (e: IllegalStateException) {
+        Log.e(TAG, "初始化手部检测器失败: ${e.message}")
+        Toast.makeText(context, "无法初始化手势识别", Toast.LENGTH_SHORT).show()
     }
 
     // 粒子动画（高性能帧驱动）
@@ -445,8 +507,13 @@ fun CameraWithOverlay(viewModel: HandDrawingViewModel) {
 
                                 val mpImage = BitmapImageBuilder(rotatedBitmap).build()
                                 // 异步检测完成后关闭imageProxy
-                                detector.detectAsync(mpImage, imageProxy.imageInfo.timestamp) { _, _ ->
-                                    imageProxy.close()
+                                detector.detectAsync(mpImage, imageProxy.imageInfo.timestamp) { result, error ->
+                                    if (error != null) {
+                                        Log.e(TAG, "检测失败", error)
+                                    } else {
+                                        result?.let { processLandmarks(it, viewModel) }
+                                    }
+                                    imageProxy.close() // 确保关闭
                                 }
                             }.onFailure {
                                 Log.e(TAG, "图像处理失败", it)
@@ -454,6 +521,9 @@ fun CameraWithOverlay(viewModel: HandDrawingViewModel) {
                             }
                         } ?: imageProxy.close() // 无检测器时直接关闭
                     }
+
+
+
 
                     preview.setSurfaceProvider(previewView.surfaceProvider)
                     val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA

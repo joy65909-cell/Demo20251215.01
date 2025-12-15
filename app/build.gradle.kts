@@ -1,7 +1,7 @@
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -16,6 +16,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "DEBUG", "true")
     }
 
     buildTypes {
@@ -27,24 +28,26 @@ android {
             )
         }
     }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     kotlinOptions {
-        jvmTarget = "11"
-    }
-    buildFeatures {
-        compose = true
-        buildConfig = true
+        jvmTarget = "1.8"
     }
 }
 
 dependencies {
     // 基础 Android 组件
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.compose)
+
 
     // Jetpack Compose UI
     implementation(platform(libs.androidx.compose.bom))
@@ -61,5 +64,12 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraxVersion")
 
     // MediaPipe (AI 手势识别)
-    implementation("com.google.mediapipe:tasks-vision:0.10.9")
+    implementation("com.google.mediapipe:tasks-vision:0.10.10")
+
+    // 其他依赖...
+    implementation("com.google.android.material:material:1.11.0")
+// 版本号可使用最新稳定版
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
+    // ViewModel KTX扩展（含viewModelScope）
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
 }

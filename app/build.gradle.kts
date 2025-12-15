@@ -6,9 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.demo20251215"
-    compileSdk {
-        version = release(34)
-    }
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.example.demo20251215"

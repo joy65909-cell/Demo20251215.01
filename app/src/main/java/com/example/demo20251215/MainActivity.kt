@@ -43,6 +43,8 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 import android.os.Handler
 import android.os.Looper
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.toSize
 
 // --- 数据模型 ---
 
@@ -350,7 +352,7 @@ fun processLandmarks(result: HandLandmarkerResult, state: AppState) {
                 }
                 state.baseScaleDist = dist
             }
-            return // 双手操作时不进行单手逻辑
+            return@post // 双手操作时不进行单手逻辑
         } else {
             state.isScaling = false
         }

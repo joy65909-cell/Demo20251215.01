@@ -74,7 +74,7 @@ class AppState {
     var isMenuOpen by mutableStateOf(false)
     var isDrawing by mutableStateOf(false)
     var menuCooldown = 0
-
+    var canvasSize by mutableStateOf(Size(1080f, 1920f))
     // 缩放相关
     var isScaling = false
     var baseScaleDist = 0f
@@ -167,7 +167,10 @@ fun CameraWithOverlay() {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .onSizeChanged { appState.canvasSize = it.toSize() } // 【新增】获取真实尺寸传给 State
+    ) {
         // 1. 相机层
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -306,10 +309,9 @@ fun CameraWithOverlay() {
 fun processLandmarks(result: HandLandmarkerResult, state: AppState) {
     if (result.landmarks().isEmpty()) return
 
-    // 获取屏幕尺寸 (这里假设固定值或者需要在 Canvas 中传递，为了简化直接用归一化坐标处理逻辑)
-    // 实际项目中应该传入 View 的宽/高。
-    val screenW = 1080f
-    val screenH = 1920f
+// 【修改】不再写死，而是从 state 里取
+    val screenW = state.canvasSize.width
+    val screenH = state.canvasSize.height
 
     // 镜像已经由 Bitmap 处理了，所以这里 x 不需要 1-x
     fun toScreen(p: com.google.mediapipe.tasks.components.containers.NormalizedLandmark): DrawPoint {
